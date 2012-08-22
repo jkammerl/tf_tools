@@ -102,7 +102,7 @@ public:
 
   void addTFMessage(const geometry_msgs::TransformStamped& msg);
   void searchForRootNodes();
-  void showTFTree(bool verbose = true)
+  void showTFTree(bool verbose = false)
   {
     cout << "TF-Tree: "<< endl;
 
@@ -197,6 +197,7 @@ public:
     StackElement s;
     s.depth = 0;
     s.node = node;
+    s.last_child = true;
     stack.push(s);
 
     singleIncrement();
@@ -259,6 +260,11 @@ public:
     return stack.top().node->tf_msg_.header.frame_id;
   }
 
+  bool isLastChild()
+  {
+    return stack.top().last_child;
+  }
+
   unsigned char getDepth()
   {
     return stack.top().depth;
@@ -288,8 +294,10 @@ protected:
     map<string, TFTreeNode*>::iterator it;
     map<string, TFTreeNode*>::iterator it_end = top.node->subnodes_.end();
 
+    size_t subnodes = 0;
     for (it = top.node->subnodes_.begin(); it != it_end; ++it)
     {
+      s.last_child = (++subnodes==1);
       s.node = it->second;
       stack.push(s);
     }
@@ -301,6 +309,7 @@ protected:
   {
     unsigned char depth;
     TFTreeNode* node;
+    bool last_child;
   };
 
   /// Internal recursion stack. Apparently a stack of vector works fastest here.

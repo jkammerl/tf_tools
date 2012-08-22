@@ -99,9 +99,22 @@ void TFTree::showTFTree(const string& root, bool verbose)
   {
     TFTreeIterator tf_it(it->second);
 
+    vector<bool> tree_connector;
+    tree_connector.reserve(32);
+
+
     while (*tf_it)
     {
       unsigned char depth = tf_it.getDepth();
+      bool last_child = tf_it.isLastChild();
+
+      if (depth>tree_connector.size())
+      {
+        tree_connector.push_back(last_child);
+      } else
+      {
+        tree_connector[depth-1] = last_child;
+      }
 
       string node_name;
 
@@ -114,10 +127,19 @@ void TFTree::showTFTree(const string& root, bool verbose)
         node_name = tf_it.getTargetTFFrame();
       }
 
-      for (unsigned char i = 0; i < depth-1; ++i)
-        cout << "|  ";
+      // remove trailing "/"
+      node_name.erase(0,1);
 
-      cout << "+" << node_name;
+      for (unsigned char i = 0; i < depth-1; ++i)
+        if (tree_connector[i])
+        {
+          cout << "   ";
+        } else
+        {
+          cout << "|  ";
+        }
+
+      cout << "+--" << node_name;
 
       if (verbose)
       {
