@@ -31,8 +31,8 @@
  *      Author: Julius Kammerl (julius@kammerl.de)
  */
 
-#ifndef TFTREE_H_
-#define TFTREE_H_
+#ifndef TF_COMPRESSION_H_
+#define TF_COMPRESSION_H_
 
 #include <ros/ros.h>
 #include <tf/tfMessage.h>
@@ -52,109 +52,56 @@
 #include <ostream>
 #include <stdint.h>
 
-#include "tf_node.h"
+#include "tf_tree.h"
 #include "tf_tree_iterator.h"
+#include "tf_container.h"
 
 using namespace std;
 
 namespace tf_tools
 {
-  class FrameTable
-  {
-      friend class boost::serialization::access;
-      friend std::ostream & operator<<(std::ostream &os, const FrameTable &gp);
 
-      template<class Archive>
-      void serialize(Archive &ar, const unsigned int version)
-      {
-          ar & vec;
-      }
-
-  public:
-      FrameTable() { }
-      virtual ~FrameTable(){}
-
-      size_t size()
-      {
-        return vec.size();
-      }
-
-      string& operator [](const size_t& idx)
-      {
-        assert(idx<vec.size());
-
-        return vec[idx];
-      }
-
-      vector<string> vec;
-
-  };
-
-  class TFTree
+  class TFCompression: public TFTree
   {
     public:
-      TFTree () : frame_count_ (0), dirty_frameID_table_(false)
+      TFCompression () :
+        TFTree(),
+        min_update_rate_(1.0/1.0),
+        max_update_rate_(1.0/10.0),
+        linear_change_threshold_(1.0),
+        angular_change_threshold_(0.02)
       {
-        reset ();
+        TFTree::reset ();
       }
-      virtual ~TFTree ()
+      virtual ~TFCompression ()
       {
-        deleteTree ();
-      }
-
-      void reset ()
-      {
-        deleteTree ();
-
-        frame_to_frameID_lookup_.clear ();
-        frameID_to_frame_lookup_.vec.clear ();
-        frameID_to_node_lookup_.clear ();
-        tf_nodes_with_parents_.clear ();
-        tf_root_nodes_.clear ();
+        this->deleteTree ();
       }
 
-      void addTFMessage (const geometry_msgs::TransformStamped& msg);
+     // void encodeIntraUpdate (std::ostream& compressedDataOut_arg);
+     // void encodeIntraUpdate (std::ostream& compressedDataOut_arg, unsigned int root);
+     // void encodeIntraUpdate (std::ostream& compressedDataOut_arg, const string& root);
 
-      void searchForRootNodes ();
-
-      void showTFTree (bool verbose = false);
-      void showTFTree (unsigned int root, bool verbose = true);
-      void showTFTree (const string& root, bool verbose = true);
-
-      void deleteTree ();
-
-      void printFrameIDTable()
-      {
-        size_t i;
-        for (i=0; i<frameID_to_frame_lookup_.size(); ++i)
-        {
-          std::cout << "ID:" <<i << frameID_to_frame_lookup_[i] << std::endl;
-        }
-      }
+      void encodeCompressedTFStream (std::ostream& compressedDataOut_arg);
+      void decodeCompressedTFStream (std::istream& compressedDataIn_arg,
+                                     tf::tfMessage& decoded_msg);
 
     protected:
-      boost::mutex mutex_;
 
-      // frame  <-> frameID lookup maps
-      map<string, unsigned int> frame_to_frameID_lookup_;
-      FrameTable frameID_to_frame_lookup_;
+      double min_update_rate_;
+      double max_update_rate_;
 
-      // frameID -> node lookup map
-      vector<TFTreeNode*> frameID_to_node_lookup_;
+      ros::Time last_frame_table_transmission_;
 
-      // amount of frames/nodes
-      unsigned int frame_count_;
+      double linear_change_threshold_;
+      double angular_change_threshold_;
 
-      // set describing nodes that have a parent
-      set<unsigned int> tf_nodes_with_parents_;
+      bool hasTFNodeChanged(TFTreeNode* node);
 
-      // vector of root node (IDs)
-      vector<unsigned int> tf_root_nodes_;
+      TFMessageContainer updateContainer_;
 
-      // dirty flag for frame ID table
-      bool dirty_frameID_table_;
   };
 
 }
 
-#endif /* TFTREE_H_ */
+#endif /* TF_COMPRESSION_H_ */

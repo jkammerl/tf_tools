@@ -35,124 +35,242 @@
 namespace tf_tools
 {
 
-void TFTree::addTFMessage(const geometry_msgs::TransformStamped& msg)
-{
-
-  map<string, TFTreeNode*>::iterator it;
-
-  const string& base_key = msg.header.frame_id;
-  const string& target_key = msg.child_frame_id;
-
-  it = tf_tree_nodes_.find(target_key);
-  TFTreeNode* tf_sub_node;
-  if (it != tf_tree_nodes_.end())
+  void TFTree::addTFMessage (const geometry_msgs::TransformStamped& msg)
   {
-    tf_sub_node = it->second;
-  }
-  else
-  {
-    tf_sub_node = new TFTreeNode();
-    tf_tree_nodes_[target_key] = tf_sub_node;
-  }
+    boost::mutex::scoped_lock lock (mutex_);
 
-  it = tf_tree_nodes_.find(base_key);
-  TFTreeNode* tf_base_node;
-  if (it != tf_tree_nodes_.end())
-  {
-    tf_base_node = it->second;
-  }
-  else
-  {
-    tf_base_node = new TFTreeNode();
-    tf_tree_nodes_[base_key] = tf_base_node;
-  }
+    const string& base_key = msg.header.frame_id;
+    const string& target_key = msg.child_frame_id;
 
-  tf_base_node->subnodes_[target_key] = tf_sub_node;
-  tf_sub_node->tf_msg_ = msg;
-  tf_sub_node->changed_ = true;
-  tf_sub_node->last_received_ = ros::Time::now();
-  tf_sub_node->update_counter_++;
+    map<string, unsigned int>::iterator it_id;
+    map<unsigned int, TFTreeNode*>::iterator it_node;
 
-  //tf_base_node->update(msg->transforms[i]);
+    /// SOURCE FRAME
 
-  tf_full_nodes_set_.insert(base_key);
-  tf_nodes_with_parents_.insert(target_key);
-}
+    TFTreeNode* tf_source_node = 0;
+    unsigned int tf_source_id;
 
-void TFTree::searchForRootNodes()
-{
-  tf_root_nodes_.clear();
-  tf_root_nodes_.reserve(max<size_t>(tf_full_nodes_set_.size(), tf_nodes_with_parents_.size()));
-
-  set_difference(tf_full_nodes_set_.begin(), tf_full_nodes_set_.end(),
-                 tf_nodes_with_parents_.begin(), tf_nodes_with_parents_.end(),
-                 insert_iterator<vector<string> >(tf_root_nodes_, tf_root_nodes_.end()));
-}
-
-void TFTree::showTFTree(const string& root, bool verbose)
-{
-
-  map<string, TFTreeNode*>::iterator it;
-
-  it = tf_tree_nodes_.find(root);
-  if (it != tf_tree_nodes_.end())
-  {
-    TFTreeIterator tf_it(it->second);
-
-    vector<bool> tree_connector;
-    tree_connector.reserve(32);
-
-
-    while (*tf_it)
+    it_id = frame_to_frameID_lookup_.find (base_key);
+    if (it_id != frame_to_frameID_lookup_.end ())
     {
-      unsigned char depth = tf_it.getDepth();
-      bool last_child = tf_it.isLastChild();
+      // node exists
+      tf_source_id = it_id->second;
 
-      if (depth>tree_connector.size())
-      {
-        tree_connector.push_back(last_child);
-      } else
-      {
-        tree_connector[depth-1] = last_child;
-      }
+      // lookup node pointer
+      if (tf_source_id<frameID_to_node_lookup_.size())
+        tf_source_node = frameID_to_node_lookup_[tf_source_id];
+    }
+    else
+    {
+      // node does not exist
 
-      string node_name;
+      // assign frame id
+      tf_source_id = frame_count_++;
 
-      if (depth == 1)
-      {
-        node_name = tf_it.getBaseTFFrame();
-      }
-      else
-      {
-        node_name = tf_it.getTargetTFFrame();
-      }
+      // add entries to lookup maps
+      frame_to_frameID_lookup_[base_key] = tf_source_id;
+      frameID_to_frame_lookup_.vec.push_back(base_key);
 
-      // remove trailing "/"
-      node_name.erase(0,1);
+      // create new node and add it to frameID_to_node_lookup_ map
+      tf_source_node = new TFTreeNode ();
+      tf_source_node->nodeID_ = tf_source_id;
+      frameID_to_node_lookup_.push_back(tf_source_node);
 
-      for (unsigned char i = 0; i < depth-1; ++i)
-        if (tree_connector[i])
-        {
-          cout << "   ";
-        } else
-        {
-          cout << "|  ";
-        }
+      dirty_frameID_table_ = true;
 
-      cout << "+--" << node_name;
+    }
 
-      if (verbose)
-      {
-        printf(" [Average Delay: %.4fs, Max Delay: %.4fs, Freq: %.4fHz]", tf_it->getAvgDelay()
-                                                                        , tf_it->getMaxDelay()
-                                                                        , tf_it->getFrequency());
-      }
-      cout<< endl;
+    /// TARGET FRAME
 
-      tf_it++;
+    TFTreeNode* tf_target_node = 0;
+    unsigned int tf_target_id;
+
+    it_id = frame_to_frameID_lookup_.find (target_key);
+    if (it_id != frame_to_frameID_lookup_.end ())
+    {
+      // node exists
+      tf_target_id = it_id->second;
+
+      // lookup node pointer
+      if (tf_target_id<frameID_to_node_lookup_.size())
+        tf_target_node = frameID_to_node_lookup_[tf_target_id];
+    }
+    else
+    {
+      // node does not exist
+
+      // assign frame id
+      tf_target_id = frame_count_++;
+
+      // add entries to lookup maps
+      frame_to_frameID_lookup_[target_key] = tf_target_id;
+      frameID_to_frame_lookup_.vec.push_back(target_key);
+
+      // create new node and add it to frameID_to_node_lookup_ map
+      tf_target_node = new TFTreeNode ();
+      tf_target_node->nodeID_ = tf_target_id;
+      tf_target_node->parent_node_ = tf_source_node;
+      tf_target_node->parent_nodeID_ = tf_source_id;
+      frameID_to_node_lookup_.push_back(tf_target_node);
+
+      dirty_frameID_table_ = true;
+    }
+
+    assert (tf_source_node && tf_target_node);
+
+    // updating node
+    tf_source_node->subnodes_.insert (tf_target_node);
+    tf_target_node->tf_msg_ = geometry_msgs::TransformStampedPtr(new geometry_msgs::TransformStamped(msg));
+    tf_target_node->changed_ = true;
+    tf_target_node->last_received_ = ros::Time::now ();
+    tf_target_node->update_counter_++;
+
+    tf_nodes_with_parents_.insert (tf_target_id);
+  }
+
+  void TFTree::searchForRootNodes ()
+  {
+    size_t i;
+
+    boost::mutex::scoped_lock lock (mutex_);
+
+    tf_root_nodes_.clear ();
+    tf_root_nodes_.reserve (tf_nodes_with_parents_.size ());
+
+    // search for nodes without parents
+    for (i = 0; i < frame_count_; ++i)
+      if (tf_nodes_with_parents_.find (i) == tf_nodes_with_parents_.end ())
+        tf_root_nodes_.push_back (i);
+  }
+
+  void TFTree::showTFTree (bool verbose)
+  {
+    searchForRootNodes ();
+    for (size_t i = 0; i < tf_root_nodes_.size (); ++i)
+    {
+      showTFTree (tf_root_nodes_[i], verbose);
+    }
+  }
+
+  void TFTree::deleteTree ()
+  {
+    size_t i;
+    map<unsigned int, TFTreeNode*>::iterator it;
+
+    boost::mutex::scoped_lock lock (mutex_);
+
+    for (i = 0; i < frame_count_; ++i)
+        delete frameID_to_node_lookup_[i];
+  }
+
+  void TFTree::showTFTree (const string& root, bool verbose)
+  {
+
+    // empty root node - show full tree
+    if (root.empty ())
+    {
+      showTFTree (verbose);
+      return;
+    }
+
+    string root_node = root;
+    map<string, unsigned int>::iterator it;
+
+    // search for root node string
+    it = frame_to_frameID_lookup_.find (root_node);
+    if (it != frame_to_frameID_lookup_.end ())
+    {
+      showTFTree (it->second, verbose);
+      return;
+    }
+
+    // search for root node string - remove trailing "/"
+    it = frame_to_frameID_lookup_.find ("/" + root_node);
+    if (it != frame_to_frameID_lookup_.end ())
+    {
+      showTFTree (it->second, verbose);
+      return;
+    }
+
+    {
+      cout << "Root not found: " << root << endl;
     }
 
   }
-}
+
+  void TFTree::showTFTree (unsigned int root, bool verbose)
+  {
+    boost::mutex::scoped_lock lock (mutex_);
+
+    string node_name;
+    map<unsigned int, TFTreeNode*>::iterator it;
+
+    if (root<frameID_to_node_lookup_.size())
+    {
+      TFTreeIterator tf_it (frameID_to_node_lookup_[root]);
+
+      vector<bool> tree_connector;
+      tree_connector.reserve (frame_count_);
+
+      if (*tf_it && (tf_it.getBaseTFFrame ()<frameID_to_frame_lookup_.vec.size()))
+      {
+        // get node string
+        node_name = frameID_to_frame_lookup_.vec[tf_it.getBaseTFFrame ()];
+        node_name.erase (0, 1);
+
+        cout << "+--" << node_name << endl;
+        tree_connector.push_back (true);
+      }
+
+      while (*tf_it)
+      {
+        unsigned char depth = tf_it.getDepth ();
+        bool last_child = tf_it.isLastChild ();
+
+        // mark remaining childs for every tree level
+        if (depth >= tree_connector.size ())
+        {
+          tree_connector.push_back (last_child);
+        }
+        else
+        {
+          tree_connector[depth] = last_child;
+        }
+
+        // get node string
+        node_name = frameID_to_frame_lookup_.vec[tf_it.getTargetTFFrame ()];
+
+        // remove trailing "/"
+        node_name.erase (0, 1);
+
+        // draw ascii connectors
+        for (unsigned char i = 0; i < depth; ++i)
+          if (tree_connector[i])
+          {
+            cout << "   ";
+          }
+          else
+          {
+            cout << "|  ";
+          }
+        cout << "+--" << node_name;
+
+        if (verbose)
+        {
+          // print verbose information
+
+          printf (" [Average Delay: %.4fs, Max Delay: %.4fs, Freq: %.4fHz]",
+              tf_it->getAvgDelay (), tf_it->getMaxDelay (),
+              tf_it->getFrequency ());
+        }
+        //eol
+        cout << endl;
+
+        // increase tree iterator
+        ++tf_it;
+      }
+
+    }
+  }
 
 }

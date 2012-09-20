@@ -9,9 +9,10 @@
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/tftool</url>
   
+  <rosdep name="boost" />
+  
   <depend package="tf"/>
   
-
 </package>
 
 
