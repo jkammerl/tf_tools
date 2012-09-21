@@ -84,7 +84,7 @@ bool TFCompression::intraUpdateRequired(TFTreeNode* node)
 }
 
 void TFCompression::encodeCompressedTFStream(ostream& compressedDataOut_arg,
-                                             const vector<string>& frame_filter_arg)
+                                             const vector<string>& frame_selector_arg)
 {
   stringstream uncompressedData;
   boost::archive::binary_oarchive oa(uncompressedData, boost::archive::no_header);
@@ -112,10 +112,10 @@ void TFCompression::encodeCompressedTFStream(ostream& compressedDataOut_arg,
   // encode all nodes
 
   {
-    updateContainer_.clear();
-    updateContainer_.reserve(frameID_to_nodePtr_lookup_.size());
+    TFContainer_.clear();
+    TFContainer_.reserve(frameID_to_nodePtr_lookup_.size());
 
-    if (!frame_filter_arg.size())
+    if (!frame_selector_arg.size())
     {
       // encode all tf message
       boost::mutex::scoped_lock lock(mutex_);
@@ -129,21 +129,21 @@ void TFCompression::encodeCompressedTFStream(ostream& compressedDataOut_arg,
       {
         if (hasTFNodeChanged(*it) || intraUpdateRequired(*it))
         {
-          updateContainer_.add(*it);
+          TFContainer_.add(*it);
         }
       }
     }
     else
     {
       // encode only selected tf message
-      vector<string>::const_iterator it_filter;
-      vector<string>::const_iterator it_filter_end = frame_filter_arg.end();
+      vector<string>::const_iterator it_selector;
+      vector<string>::const_iterator it_selector_end = frame_selector_arg.end();
 
-      for (it_filter = frame_filter_arg.begin(); it_filter != it_filter_end; ++it_filter)
+      for (it_selector = frame_selector_arg.begin(); it_selector != it_selector_end; ++it_selector)
       {
         map<string, unsigned int>::iterator it_node_id;
 
-        it_node_id = frameStr_to_frameID_lookup_.find(*it_filter);
+        it_node_id = frameStr_to_frameID_lookup_.find(*it_selector);
         if (it_node_id != frameStr_to_frameID_lookup_.end())
         {
           // node exists
@@ -152,7 +152,7 @@ void TFCompression::encodeCompressedTFStream(ostream& compressedDataOut_arg,
           {
             if (hasTFNodeChanged(node) || intraUpdateRequired(node))
             {
-              updateContainer_.add(node);
+              TFContainer_.add(node);
             }
             node = node->parent_node_;
           } while (node);
@@ -161,12 +161,12 @@ void TFCompression::encodeCompressedTFStream(ostream& compressedDataOut_arg,
 
     }
 
-    if (updateContainer_.size() > 0)
+    if (TFContainer_.size() > 0)
     {
       FrameHeader header(FrameHeader::COMPRESSED_TF_CONTAINER);
       oa << header;
-      oa << updateContainer_;
-      ROS_DEBUG("Amount of TF messages in TF container: %d", (int)updateContainer_.size());
+      oa << TFContainer_;
+      ROS_DEBUG("Amount of TF messages in TF container: %d", (int)TFContainer_.size());
     }
   }
   // zlib compression
@@ -243,12 +243,12 @@ void TFCompression::decodeCompressedTFStream(istream& compressedDataIn_arg, tf::
           uint16_t source_frame_id, target_frame_id;
           size_t table_size = frameID_to_frameStr_lookup_.size();
 
-          updateContainer_.clear();
-          ia >> updateContainer_;
+          TFContainer_.clear();
+          ia >> TFContainer_;
 
-          for (i = 0; i < updateContainer_.size(); ++i)
+          for (i = 0; i < TFContainer_.size(); ++i)
           {
-            updateContainer_.decode(i, tf, source_frame_id, target_frame_id);
+            TFContainer_.decode(i, tf, source_frame_id, target_frame_id);
 
             if ((source_frame_id < table_size) && (target_frame_id < table_size))
             {

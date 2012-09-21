@@ -89,6 +89,9 @@ namespace tf_tunnel
 
     protected:
 
+      bool hasTFNodeChanged(TFTreeNode* node);
+      bool intraUpdateRequired(TFTreeNode* node);
+
       double intra_update_rate_;
 
       ros::Time last_frame_table_transmission_;
@@ -96,10 +99,7 @@ namespace tf_tunnel
       double linear_change_threshold_;
       double angular_change_threshold_;
 
-      bool hasTFNodeChanged(TFTreeNode* node);
-      bool intraUpdateRequired(TFTreeNode* node);
-
-      TFMessageContainer updateContainer_;
+      TFMessageContainer TFContainer_;
 
   };
 

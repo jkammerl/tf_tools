@@ -72,7 +72,7 @@ protected:
   ros::CallbackQueue tf_message_encoder_callback_queue_;
   boost::thread* encoder_callback_queue_thread_;
 
-  std::vector<std::string> frame_filter_;
+  std::vector<std::string> frame_selector_;
 
   int wait_time_;
   bool verbose_;
@@ -84,7 +84,7 @@ protected:
 
     compressedDataStream >> std::noskipws;
 
-    tf_encoding_tree_.encodeCompressedTFStream(compressedDataStream, frame_filter_);
+    tf_encoding_tree_.encodeCompressedTFStream(compressedDataStream, frame_selector_);
 
     len = compressedDataStream.str().length();
 
@@ -141,27 +141,24 @@ public:
     verbose_ = false;
     priv_nh_.param<bool>("verbose", verbose_, false);
 
-    string frame_filter;
-    priv_nh_.param<std::string>("frame_filter", frame_filter, "");
-    initializeFrameFilter(frame_filter);
+    string frame_selector;
+    priv_nh_.param<std::string>("frame_selector", frame_selector, "");
+    initializeFrameFilter(frame_selector);
 
-
-    // waiting callback
-    cout << "Collecting tf frames.. ";
-    wait_time_ = 3;
-    priv_nh_.getParam("wait", wait_time_);
-    sync_timer_ = timer_nh_.createTimer(ros::Duration(1.0 / 10), boost::bind(&TFEncoder::doEncoding, this));
+    double rate;
+    priv_nh_.param<double>("rate", rate, 10.0);
+    sync_timer_ = timer_nh_.createTimer(ros::Duration(1.0 / rate), boost::bind(&TFEncoder::doEncoding, this));
   }
 
 protected:
-  void initializeFrameFilter(const string& filter_str)
+  void initializeFrameFilter(const string& selector_str_arg)
   {
-    boost::split(frame_filter_, filter_str, boost::is_any_of(","));
+    boost::split(frame_selector_, selector_str_arg, boost::is_any_of(","));
 
     vector<string>::iterator it;
-    vector<string>::iterator it_end=frame_filter_.end();
+    vector<string>::iterator it_end=frame_selector_.end();
 
-    for (it=frame_filter_.begin(); it!=it_end; ++it)
+    for (it=frame_selector_.begin(); it!=it_end; ++it)
     {
       boost::algorithm::trim(*it);
       if ((*it)[0]!='/')
