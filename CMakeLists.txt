@@ -21,16 +21,16 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #set the default path for built libraries to the "lib" directory
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
-include_directories(${PROJECT_SOURCE_DIR}/msg_gen/cpp/include/tf_tool)
+include_directories(${PROJECT_SOURCE_DIR}/msg_gen/cpp/include/tf_tunnel)
 
 #uncomment if you have defined messages
-#rosbuild_genmsg()
+rosbuild_genmsg()
 #uncomment if you have defined services
 #rosbuild_gensrv()
 
 #add_message_files(DIRECTORY msg FILES CompressedTF.msg)
 #generate_messages(DEPENDENCIES std_msgs geometry_msgs)
-rosbuild_genmsg()
+
 
 #common commands for building c++ executables and libraries
 #rosbuild_add_library(${PROJECT_NAME} src/example.cpp)
@@ -43,6 +43,13 @@ rosbuild_genmsg()
 rosbuild_add_executable(show_tf_tree src/show_tf_tree.cpp src/tf_tree.cpp)
 target_link_libraries( show_tf_tree ${Boost_LIBRARIES} )
 
-rosbuild_add_executable(tf_tunnel src/tf_tunnel.cpp src/tf_tree.cpp src/tf_compression.cpp)
-target_link_libraries( tf_tunnel ${Boost_LIBRARIES} )
+rosbuild_add_executable(show_tf_roots src/show_tf_roots.cpp src/tf_tree.cpp)
+target_link_libraries( show_tf_roots ${Boost_LIBRARIES} )
+
+rosbuild_add_executable(tf_encoder src/tf_encoder.cpp src/tf_tree.cpp src/tf_compression.cpp)
+target_link_libraries( tf_encoder ${Boost_LIBRARIES} )
+
+rosbuild_add_executable(tf_decoder src/tf_decoder.cpp src/tf_tree.cpp src/tf_compression.cpp)
+target_link_libraries( tf_decoder ${Boost_LIBRARIES} )
+
 

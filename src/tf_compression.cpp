@@ -43,294 +43,234 @@
 
 #include "tf_compression.h"
 
-#include <zlib.h> # for MAX_WBITS
+#include <zlib.h> // for MAX_WBITS
 
-namespace tf_tools
+using namespace std;
+
+namespace tf_tunnel
 {
 
-  bool TFCompression::hasTFNodeChanged(TFTreeNode* node)
-  {
-    if (!node->tf_msg_)
-      return false;
-    if (!node->tf_msg_sent_)
-      return true;
-
-    tf::Transform tf1, tf2;
-    tf::transformMsgToTF(node->tf_msg_->transform, tf1);
-    tf::transformMsgToTF(node->tf_msg_sent_->transform, tf2);
-
-    if (linear_change_threshold_ == 0.0 || angular_change_threshold_ == 0.0 ||
-        tf1.getOrigin().distance(tf2.getOrigin()) > linear_change_threshold_ ||
-        tf1.getRotation().angle(tf2.getRotation()) > angular_change_threshold_) return true;
+bool TFCompression::hasTFNodeChanged(TFTreeNode* node)
+{
+  if (!node->tf_msg_)
+    return false;
+  if (!node->tf_msg_sent_)
+    return true;
+  if (!node->changed_)
     return false;
 
+  tf::Transform tf1, tf2;
+  tf::transformMsgToTF(node->tf_msg_->transform, tf1);
+  tf::transformMsgToTF(node->tf_msg_sent_->transform, tf2);
+
+  if (linear_change_threshold_ == 0.0 || angular_change_threshold_ == 0.0
+      || tf1.getOrigin().distance(tf2.getOrigin()) > linear_change_threshold_
+      || tf1.getRotation().angle(tf2.getRotation()) > angular_change_threshold_)
+    return true;
+  return false;
+
+}
+
+bool TFCompression::intraUpdateRequired(TFTreeNode* node)
+{
+
+  if (!node->tf_msg_)
+    return false;
+  if (!node->tf_msg_sent_)
+    return true;
+
+  return (ros::Duration(ros::Time::now() - node->transmission_stamp_).toSec() > intra_update_rate_);
+
+}
+
+void TFCompression::encodeCompressedTFStream(ostream& compressedDataOut_arg,
+                                             const vector<string>& frame_filter_arg)
+{
+  stringstream uncompressedData;
+  boost::archive::binary_oarchive oa(uncompressedData, boost::archive::no_header);
+
+  if (ros::Duration(ros::Time::now() - last_frame_table_transmission_).toSec() > intra_update_rate_)
+    dirty_frameID_table_ = true;
+
+  if (dirty_frameID_table_)
+  {
+
+    dirty_frameID_table_ = false;
+    last_frame_table_transmission_ = ros::Time::now();
+
+    FrameHeader header(FrameHeader::COMPRESSED_FRAME_ID_TABLE);
+
+    oa << header;
+    {
+      boost::mutex::scoped_lock lock(mutex_);
+      oa << frameID_to_frameStr_lookup_;
+
+      ROS_DEBUG("Encoding FrameID table (size: %d)", (int)frameID_to_frameStr_lookup_.size());
+    }
   }
 
+  // encode all nodes
 
-  void TFCompression::encodeCompressedTFStream (std::ostream& compressedDataOut_arg)
-{
-    boost::mutex::scoped_lock lock(mutex_);
+  {
+    updateContainer_.clear();
+    updateContainer_.reserve(frameID_to_nodePtr_lookup_.size());
 
-    std::stringstream uncompressedData;
-    boost::archive::binary_oarchive oa(uncompressedData, boost::archive::no_header);
-
-    if (ros::Duration(ros::Time::now()-last_frame_table_transmission_).toSec()>min_update_rate_)
-      dirty_frameID_table_ = true;
-
-    if (dirty_frameID_table_)
+    if (!frame_filter_arg.size())
     {
-      dirty_frameID_table_ = false;
-      last_frame_table_transmission_ = ros::Time::now();
+      // encode all tf message
+      boost::mutex::scoped_lock lock(mutex_);
 
-      FrameHeader header(FrameHeader::COMPRESSED_FRAME_ID_TABLE);
+      //ROS_DEBUG("Encoding collected TF messages (size: %d)", (int)frameID_to_nodePtr_lookup_.size());
 
-      oa << header;
+      vector<TFTreeNode*>::iterator it;
+      ;
+      vector<TFTreeNode*>::iterator it_end = frameID_to_nodePtr_lookup_.end();
+      for (it = frameID_to_nodePtr_lookup_.begin(); it != it_end; ++it)
       {
-       // boost::mutex::scoped_lock lock(mutex_);
-        oa << frameID_to_frame_lookup_;
-
-       // printFrameIDTable();
-
+        if (hasTFNodeChanged(*it) || intraUpdateRequired(*it))
+        {
+          updateContainer_.add(*it);
+        }
       }
     }
-
-    // encode all nodes
-
+    else
     {
-      updateContainer_.clear();
-      updateContainer_.reserve(frameID_to_node_lookup_.size());
+      // encode only selected tf message
+      vector<string>::const_iterator it_filter;
+      vector<string>::const_iterator it_filter_end = frame_filter_arg.end();
 
-      bool TFMsgChanged = false;
+      for (it_filter = frame_filter_arg.begin(); it_filter != it_filter_end; ++it_filter)
       {
-       // boost::mutex::scoped_lock lock(mutex_);
+        map<string, unsigned int>::iterator it_node_id;
 
-        vector<TFTreeNode*>::iterator it;;
-        vector<TFTreeNode*>::iterator it_end = frameID_to_node_lookup_.end();
-        for (it = frameID_to_node_lookup_.begin(); it!=it_end; ++it)
+        it_node_id = frameStr_to_frameID_lookup_.find(*it_filter);
+        if (it_node_id != frameStr_to_frameID_lookup_.end())
         {
-          if (1)//hasTFNodeChanged(*it))
+          // node exists
+          TFTreeNode* node = frameID_to_nodePtr_lookup_[it_node_id->second];
+          do
           {
-            TFMsgChanged = true;
-            updateContainer_.add(*it);
-          }
+            if (hasTFNodeChanged(node) || intraUpdateRequired(node))
+            {
+              updateContainer_.add(node);
+            }
+            node = node->parent_node_;
+          } while (node);
         }
       }
 
-      if (TFMsgChanged)
-      {
-        FrameHeader header(FrameHeader::COMPRESSED_TF_CONTAINER);
-        oa << header;
-        oa << updateContainer_;
-      }
     }
-    // zlib compression
 
-    uncompressedData.flush();
-
-    if (uncompressedData.str().length()>0)
+    if (updateContainer_.size() > 0)
     {
-      try
-      {
-        boost::iostreams::zlib_params p;
-        p.window_bits = 16 +  MAX_WBITS;
-
-        boost::iostreams::filtering_streambuf<boost::iostreams::output> out;
-        out.push(boost::iostreams::zlib_compressor(p));
-        out.push(compressedDataOut_arg);
-        boost::iostreams::copy(uncompressedData, out);
-        compressedDataOut_arg.flush();
-
-      } catch (boost::iostreams::zlib_error& e)
-      {
-        ROS_ERROR("ZLIB encoding failed: %s", e.what());
-      }
+      FrameHeader header(FrameHeader::COMPRESSED_TF_CONTAINER);
+      oa << header;
+      oa << updateContainer_;
+      ROS_DEBUG("Amount of TF messages in TF container: %d", (int)updateContainer_.size());
     }
-}
+  }
+  // zlib compression
 
-  void TFCompression::decodeCompressedTFStream (std::istream& compressedDataIn_arg,
-                                                tf::tfMessage& decoded_msg)
-{
-    size_t i;
-    boost::mutex::scoped_lock lock(mutex_);
+  uncompressedData.flush();
 
-    std::stringstream uncompressedData;
+  if (uncompressedData.str().length() > 0)
+  {
+    ROS_DEBUG("Uncompressed data size: %d bytes", (int)uncompressedData.str().length());
 
-    // zlib decompression
     try
     {
       boost::iostreams::zlib_params p;
-      p.window_bits = 16 +  MAX_WBITS;
+      p.window_bits = 16 + MAX_WBITS;
 
-      boost::iostreams::filtering_streambuf<boost::iostreams::input> in;
-      in.push(boost::iostreams::zlib_decompressor(p));
-      in.push(compressedDataIn_arg);
-      boost::iostreams::copy(in, uncompressedData);
+      boost::iostreams::filtering_streambuf < boost::iostreams::output > out;
+      out.push(boost::iostreams::zlib_compressor(p));
+      out.push(compressedDataOut_arg);
+      boost::iostreams::copy(uncompressedData, out);
+      compressedDataOut_arg.flush();
 
-    } catch (boost::iostreams::zlib_error& e) {
-      ROS_ERROR("ZLIB decoding failed: %s (%d)", e.what(), e.error());
-
-      if (e.error() == boost::iostreams::zlib::stream_end)
-      {
-        cout << "Stream end zlib error";
-      }
-      else if (e.error() == boost::iostreams::zlib::stream_error)
-      {
-        cout << "Stream zlib error";
-      }
-      else if (e.error() == boost::iostreams::zlib::version_error)
-      {
-        cout << "Version zlib error";
-      }
-      else if (e.error() == boost::iostreams::zlib::data_error)
-      {
-        cout << "Data zlib error";
-      }
-      else if (e.error() == boost::iostreams::zlib::mem_error)
-      {
-        cout << "Memory zlib error";
-      }
-      else if (e.error() == boost::iostreams::zlib::buf_error)
-      {
-        cout << "Buffer zlib error";
-      }
-      else
-      {
-        cout << "Unknown zlib error";
-      }
-      cout<<endl;
     }
-
-    // deserialize data
-
-    boost::archive::binary_iarchive ia(uncompressedData, boost::archive::no_header);
-
-    FrameHeader header;
-
-    try
+    catch (boost::iostreams::zlib_error& e)
     {
+      ROS_ERROR("ZLIB encoding failed: %s (%d)", e.what(), e.error());
+    }
+  }
+}
 
-      while (!uncompressedData.eof())
+void TFCompression::decodeCompressedTFStream(istream& compressedDataIn_arg, tf::tfMessage& decoded_msg)
+{
+  size_t i;
+  boost::mutex::scoped_lock lock(mutex_);
+
+  stringstream uncompressedData;
+
+  // zlib decompression
+  try
+  {
+    boost::iostreams::zlib_params p;
+    p.window_bits = 16 + MAX_WBITS;
+
+    boost::iostreams::filtering_streambuf < boost::iostreams::input > in;
+    in.push(boost::iostreams::zlib_decompressor(p));
+    in.push(compressedDataIn_arg);
+    boost::iostreams::copy(in, uncompressedData);
+
+  }
+  catch (boost::iostreams::zlib_error& e)
+  {
+    ROS_ERROR("ZLIB decoding failed: %s (%d)", e.what(), e.error());
+  }
+
+  // deserialize data
+
+  boost::archive::binary_iarchive ia(uncompressedData, boost::archive::no_header);
+
+  FrameHeader header;
+  try
+  {
+    while (1)
+    {
+      ia >> header;
+      switch (header.type_)
       {
-        ia >> header;
-        switch (header.type_)
+        case FrameHeader::COMPRESSED_FRAME_ID_TABLE:
+          ia >> frameID_to_frameStr_lookup_;
+          ROS_DEBUG("FrameVector received (size: %d)", (int)frameID_to_frameStr_lookup_.size());
+          break;
+        case FrameHeader::COMPRESSED_TF_CONTAINER:
         {
-          case FrameHeader::COMPRESSED_FRAME_ID_TABLE:
-            ia >> frameID_to_frame_lookup_;
+          geometry_msgs::TransformStamped tf;
 
+          uint16_t source_frame_id, target_frame_id;
+          size_t table_size = frameID_to_frameStr_lookup_.size();
+
+          updateContainer_.clear();
+          ia >> updateContainer_;
+
+          for (i = 0; i < updateContainer_.size(); ++i)
+          {
+            updateContainer_.decode(i, tf, source_frame_id, target_frame_id);
+
+            if ((source_frame_id < table_size) && (target_frame_id < table_size))
             {
-              size_t i;
-              std::cout<< "FrameTable" << std::endl;
+              tf.header.frame_id = frameID_to_frameStr_lookup_[source_frame_id];
+              tf.child_frame_id = frameID_to_frameStr_lookup_[target_frame_id];
 
-              for (i=0; i<frameID_to_frame_lookup_.size(); ++i)
-                std::cout<<frameID_to_frame_lookup_[i]<< std::endl;
+              decoded_msg.transforms.push_back(tf);
+
+              cout << tf.header.frame_id << "--" << tf.child_frame_id << endl;
             }
-            break;
-          case FrameHeader::COMPRESSED_TF_CONTAINER:
-            {
-              geometry_msgs::TransformStamped tf;
-
-              uint16_t source_frame_id, target_frame_id;
-              size_t table_size = frameID_to_frame_lookup_.size();
-
-              updateContainer_.clear();
-              ia >> updateContainer_;
-
-              for (i=0; i<updateContainer_.size(); ++i)
-              {
-                updateContainer_.decode(i, tf, source_frame_id, target_frame_id);
-
-                if ( (source_frame_id<table_size) && (target_frame_id<table_size))
-                {
-                  tf.header.frame_id = frameID_to_frame_lookup_[source_frame_id];
-                  tf.child_frame_id = frameID_to_frame_lookup_[target_frame_id];
-
-                  decoded_msg.transforms.push_back(tf);
-
-                  std::cout<< tf.header.frame_id << "--" << tf.child_frame_id << std::endl;
-                }
-
-                // PUBLISH MESSAGE
-              }
-            }
-            break;
-          default:
-            break;
+          }
         }
+          break;
+        default:
+          break;
       }
-    } catch (boost::archive::archive_exception& e) {}
+    }
+  }
+  catch (boost::archive::archive_exception& e)
+  {
+  }
 
 }
-/*
-  void TFCompression::encodeIntraUpdate (std::ostream& compressedDataOut_arg)
-  {
 
-    searchForRootNodes ();
-    for (size_t i = 0; i < tf_root_nodes_.size (); ++i)
-    {
-      encodeIntraUpdate (compressedDataOut_arg, tf_root_nodes_[i]);
-    }
-  }
-  void TFCompression::encodeIntraUpdate (std::ostream& compressedDataOut_arg, unsigned int root)
-  {
-
-    boost::mutex::scoped_lock lock (mutex_);
-
-    string node_name;
-    map<unsigned int, TFTreeNode*>::iterator it;
-
-    if (root<frameID_to_node_lookup_.size())
-    {
-      updateContainer_.clear();
-      updateContainer_.reserve(frame_count_);
-
-      TFTreeIterator tf_it (frameID_to_node_lookup_[root]);
-
-      while (*tf_it)
-      {
-        geometry_msgs::TransformStampedConstPtr tf_message = tf_it.getTFMessage();
-
-        updateContainer_.encode(tf_it.getTFMessage(), tf_it.getBaseTFFrame(), tf_it.getTargetTFFrame() );
-
-        // increase tree iterator
-        ++tf_it;
-      }
-
-      boost::archive::binary_oarchive oa(compressedDataOut_arg, boost::archive::no_header);
-      oa << updateContainer_;
-    }
-
-  }
-  void TFCompression::encodeIntraUpdate (std::ostream& compressedDataOut_arg, const string& root)
-  {
-    // empty root node - show full tree
-    if (root.empty ())
-    {
-      encodeIntraUpdate (compressedDataOut_arg);
-      return;
-    }
-
-    string root_node = root;
-    map<string, unsigned int>::iterator it;
-
-    // search for root node string
-    it = frame_to_frameID_lookup_.find (root_node);
-    if (it != frame_to_frameID_lookup_.end ())
-    {
-      encodeIntraUpdate (compressedDataOut_arg, it->second);
-      return;
-    }
-
-    // search for root node string - remove trailing "/"
-    it = frame_to_frameID_lookup_.find ("/" + root_node);
-    if (it != frame_to_frameID_lookup_.end ())
-    {
-      encodeIntraUpdate (compressedDataOut_arg, it->second);
-      return;
-    }
-
-    {
-      cout << "Root not found: " << root << endl;
-    }
-  }
-*/
 }

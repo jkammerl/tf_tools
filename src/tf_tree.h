@@ -48,6 +48,7 @@
 #include <boost/serialization/string.hpp>
 
 #include <map>
+#include <vector>
 #include <set>
 #include <ostream>
 #include <stdint.h>
@@ -55,105 +56,61 @@
 #include "tf_node.h"
 #include "tf_tree_iterator.h"
 
-using namespace std;
-
-namespace tf_tools
+namespace tf_tunnel
 {
-  class FrameTable
-  {
-      friend class boost::serialization::access;
-      friend std::ostream & operator<<(std::ostream &os, const FrameTable &gp);
 
-      template<class Archive>
-      void serialize(Archive &ar, const unsigned int version)
-      {
-          ar & vec;
-      }
+class FrameVector : public std::vector<std::string>
+{
+  friend class boost::serialization::access;
+  friend std::ostream & operator<<(std::ostream &os, const FrameVector &gp);
 
-  public:
-      FrameTable() { }
-      virtual ~FrameTable(){}
+public:
+  FrameVector() { }
+  virtual ~FrameVector() { }
 
-      size_t size()
-      {
-        return vec.size();
-      }
+private:
+  template<class Archive>
+    void serialize(Archive &ar, const unsigned int version)
+    {
+      std::vector < std::string > &vec = *this;
+      ar & vec;
+    }
+};
 
-      string& operator [](const size_t& idx)
-      {
-        assert(idx<vec.size());
+class TFTree
+{
+public:
+  TFTree() :
+      frame_count_(0), dirty_frameID_table_(false) { }
+  virtual ~TFTree() { }
 
-        return vec[idx];
-      }
+  void addTFMessage(const geometry_msgs::TransformStamped& msg);
 
-      vector<string> vec;
+  void showTFRoots();
 
-  };
+  void showTFTree(unsigned int root, bool verbose = true);
+  void showTFTree(const std::string& root, bool verbose = true);
 
-  class TFTree
-  {
-    public:
-      TFTree () : frame_count_ (0), dirty_frameID_table_(false)
-      {
-        reset ();
-      }
-      virtual ~TFTree ()
-      {
-        deleteTree ();
-      }
+protected:
 
-      void reset ()
-      {
-        deleteTree ();
+  void searchForRootNodes(std::vector<unsigned int>& tf_root_nodes_arg);
 
-        frame_to_frameID_lookup_.clear ();
-        frameID_to_frame_lookup_.vec.clear ();
-        frameID_to_node_lookup_.clear ();
-        tf_nodes_with_parents_.clear ();
-        tf_root_nodes_.clear ();
-      }
+  boost::mutex mutex_;
 
-      void addTFMessage (const geometry_msgs::TransformStamped& msg);
+  // Lookup tables and maps
+  std::map<std::string, unsigned int> frameStr_to_frameID_lookup_;
+  FrameVector frameID_to_frameStr_lookup_;
+  std::vector<TFTreeNode*> frameID_to_nodePtr_lookup_;
 
-      void searchForRootNodes ();
+  // amount of frames/nodes
+  unsigned int frame_count_;
 
-      void showTFTree (bool verbose = false);
-      void showTFTree (unsigned int root, bool verbose = true);
-      void showTFTree (const string& root, bool verbose = true);
+  // set describing nodes that have a parent
+  std::set<unsigned int> tf_nodes_with_parents_;
 
-      void deleteTree ();
-
-      void printFrameIDTable()
-      {
-        size_t i;
-        for (i=0; i<frameID_to_frame_lookup_.size(); ++i)
-        {
-          std::cout << "ID:" <<i << frameID_to_frame_lookup_[i] << std::endl;
-        }
-      }
-
-    protected:
-      boost::mutex mutex_;
-
-      // frame  <-> frameID lookup maps
-      map<string, unsigned int> frame_to_frameID_lookup_;
-      FrameTable frameID_to_frame_lookup_;
-
-      // frameID -> node lookup map
-      vector<TFTreeNode*> frameID_to_node_lookup_;
-
-      // amount of frames/nodes
-      unsigned int frame_count_;
-
-      // set describing nodes that have a parent
-      set<unsigned int> tf_nodes_with_parents_;
-
-      // vector of root node (IDs)
-      vector<unsigned int> tf_root_nodes_;
-
-      // dirty flag for frame ID table
-      bool dirty_frameID_table_;
-  };
+  // dirty flag for frame ID table
+  bool dirty_frameID_table_;
+};
 
 }
 

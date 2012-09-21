@@ -56,9 +56,7 @@
 #include "tf_tree_iterator.h"
 #include "tf_container.h"
 
-using namespace std;
-
-namespace tf_tools
+namespace tf_tunnel
 {
 
   class TFCompression: public TFTree
@@ -66,30 +64,32 @@ namespace tf_tools
     public:
       TFCompression () :
         TFTree(),
-        min_update_rate_(1.0/1.0),
-        max_update_rate_(1.0/10.0),
+        intra_update_rate_(5.0),
         linear_change_threshold_(1.0),
         angular_change_threshold_(0.02)
-      {
-        TFTree::reset ();
-      }
-      virtual ~TFCompression ()
-      {
-        this->deleteTree ();
-      }
+      { }
 
-     // void encodeIntraUpdate (std::ostream& compressedDataOut_arg);
-     // void encodeIntraUpdate (std::ostream& compressedDataOut_arg, unsigned int root);
-     // void encodeIntraUpdate (std::ostream& compressedDataOut_arg, const string& root);
+      virtual ~TFCompression () { }
 
-      void encodeCompressedTFStream (std::ostream& compressedDataOut_arg);
+      void encodeCompressedTFStream (std::ostream& compressedDataOut_arg,
+                                     const std::vector<std::string>& frame_filter_);
+
       void decodeCompressedTFStream (std::istream& compressedDataIn_arg,
                                      tf::tfMessage& decoded_msg);
 
+      void setAngularThreshold(double thres)
+      {
+        angular_change_threshold_ = thres;
+      }
+
+      void setLinearThreshold(double thres)
+      {
+        linear_change_threshold_ = thres;
+      }
+
     protected:
 
-      double min_update_rate_;
-      double max_update_rate_;
+      double intra_update_rate_;
 
       ros::Time last_frame_table_transmission_;
 
@@ -97,6 +97,7 @@ namespace tf_tools
       double angular_change_threshold_;
 
       bool hasTFNodeChanged(TFTreeNode* node);
+      bool intraUpdateRequired(TFTreeNode* node);
 
       TFMessageContainer updateContainer_;
 

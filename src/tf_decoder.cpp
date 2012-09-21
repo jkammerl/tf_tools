@@ -49,19 +49,15 @@
 
 using namespace std;
 
-namespace tf_tools
+namespace tf_tunnel
 {
 
-class TFTunnel
+class TFDecoder
 {
 protected:
 
-  TFCompression tf_encoding_tree_;
   TFCompression tf_decoding_tree_;
 
-  ros::NodeHandle rootEnc_nh_;
-  ros::Subscriber subEnc_;
-  ros::Publisher pubEnc_;
 
   ros::NodeHandle rootDec_nh_;
   ros::Subscriber subDec_;
@@ -73,9 +69,8 @@ protected:
   boost::mutex mutex_;
   ros::Timer sync_timer_;
   string root_node_;
-  ros::CallbackQueue tf_message_encoder_callback_queue_;
+
   ros::CallbackQueue tf_message_decoder_callback_queue_;
-  boost::thread* encoder_callback_queue_thread_;
   boost::thread* decoder_callback_queue_thread_;
 
   int wait_time_;
@@ -83,35 +78,7 @@ protected:
 
   unsigned int tf_counter_;
 
-  void doEncoding()
-  {
-    std::size_t len;
-    std::stringstream compressedDataStream;
-
-    tf_encoding_tree_.encodeCompressedTFStream(compressedDataStream);
-
-    len = compressedDataStream.str().length();
-
-    if (len > 0)
-    {
-      typedef std::istream_iterator<char> istream_iterator;
-
-      tf_tool::CompressedTFPtr compressed_msg = tf_tool::CompressedTFPtr(new tf_tool::CompressedTF);
-      compressed_msg->header.stamp = ros::Time::now();
-
-      // copy data from stringstream to ROS message
-      compressedDataStream >> std::noskipws;
-      compressed_msg->data.reserve(len);
-      std::copy(istream_iterator(compressedDataStream), istream_iterator(), std::back_inserter(compressed_msg->data));
-
-      // publish message
-      pubEnc_.publish(*compressed_msg);
-
- //     doDecoding(compressed_msg);
-    }
-  }
-
-  void doDecoding(tf_tool::CompressedTFConstPtr compressed_tf_msg)
+  void doDecoding(tf_tunnel::CompressedTFConstPtr compressed_tf_msg)
   {
 
     std::cout<<"decoding.."<<std::endl;
@@ -134,65 +101,29 @@ protected:
 
   }
 
-  void callbackTF(const tf::tfMessageConstPtr &msg)
-  {
-    for (size_t i = 0; i < msg->transforms.size(); i++)
-    {
-      tf_encoding_tree_.addTFMessage(msg->transforms[i]);
-      tf_counter_++;
-    }
-  }
-
 public:
-  TFTunnel() :
-    rootEnc_nh_(""), rootDec_nh_(""), priv_nh_("~")
+  TFDecoder() :
+    rootDec_nh_(""), priv_nh_("~")
   {
     tf_counter_ = 0;
     string sub_topic;
     std::string pub_topic;
 
-    // ENCODER
-
-    // subscribe to /tf
-
-    priv_nh_.param<string>("subscribe_topic", sub_topic, "/tf");
-    subEnc_ = rootEnc_nh_.subscribe(sub_topic, 1, &TFTunnel::callbackTF, this);
-    rootEnc_nh_.setCallbackQueue(&tf_message_encoder_callback_queue_);
-
-    // publisher
-    priv_nh_.param<std::string>("publish_topic", pub_topic, "/tf_compressed");
-    pubEnc_ = rootEnc_nh_.advertise<tf_tool::CompressedTF>(pub_topic, 1);
-
     // DECODER
     priv_nh_.param<string>("subscribe_topic", sub_topic, "/tf_compressed");
-    subDec_ = rootDec_nh_.subscribe(sub_topic, 1, &TFTunnel::doDecoding, this);
+    subDec_ = rootDec_nh_.subscribe(sub_topic, 1, &TFDecoder::doDecoding, this);
     rootDec_nh_.setCallbackQueue(&tf_message_decoder_callback_queue_);
 
-    priv_nh_.param<std::string>("publish_topic", pub_topic, "/tf_tunnel");
+    priv_nh_.param<std::string>("publish_topic", pub_topic, "/tf_decoded");
     pubDec_ = rootDec_nh_.advertise<tf::tfMessage>(pub_topic, 1);
 
-
     // create thread for processing callback queue
-    encoder_callback_queue_thread_ = new boost::thread(boost::bind(&TFTunnel::processEncoderCallbackQueueThread, this));
-    decoder_callback_queue_thread_ = new boost::thread(boost::bind(&TFTunnel::processDecoderCallbackQueueThread, this));
+    decoder_callback_queue_thread_ = new boost::thread(boost::bind(&TFDecoder::processDecoderCallbackQueueThread, this));
 
     // read verbose parameter
     verbose_ = false;
     priv_nh_.param<bool>("verbose", verbose_, false);
 
-    // read root node parameter
-    priv_nh_.param<string>("root", root_node_, "");
-
-    // waiting callback
-    cout << "Collecting tf frames.. ";
-    wait_time_ = 3;
-    priv_nh_.getParam("wait", wait_time_);
-    sync_timer_ = timer_nh_.createTimer(ros::Duration(1.0 / 10), boost::bind(&TFTunnel::doEncoding, this));
-  }
-
-  void processEncoderCallbackQueueThread()
-  {
-    tf_message_encoder_callback_queue_.callAvailable(ros::WallDuration(0.001));
   }
 
   void processDecoderCallbackQueueThread()
@@ -205,8 +136,8 @@ public:
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "tf_tunnel");
-  tf_tools::TFTunnel tftree;
+  ros::init(argc, argv, "tf_decoder");
+  tf_tunnel::TFDecoder tftree;
   ros::spin();
   return 0;
 }

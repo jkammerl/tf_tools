@@ -35,7 +35,7 @@
 
 #include <set>
 
-namespace tf_tools
+namespace tf_tunnel
 {
 
   class TFTreeNode
@@ -91,6 +91,7 @@ namespace tf_tools
     bool changed_;
     ros::Time last_received_;
     ros::Time first_received_;
+    ros::Time transmission_stamp_;
     float max_delay_;
     unsigned int update_counter_;
   };

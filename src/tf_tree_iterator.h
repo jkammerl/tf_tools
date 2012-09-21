@@ -47,11 +47,9 @@
 
 #include "tf_node.h"
 
-using namespace std;
-
-namespace tf_tools
+namespace tf_tunnel
 {
-  class TFTreeIterator : iterator<forward_iterator_tag, TFTreeNode>
+  class TFTreeIterator : std::iterator<std::forward_iterator_tag, TFTreeNode>
   {
     public:
       /// Default ctor, only used for the end-iterator
@@ -163,8 +161,8 @@ namespace tf_tools
         s.depth = top.depth + 1;
 
         // iterators
-        set<TFTreeNode*>::iterator it;
-        const set<TFTreeNode*>::iterator it_end = top.node->subnodes_.end ();
+        std::set<TFTreeNode*>::iterator it;
+        std::set<TFTreeNode*>::const_iterator it_end = top.node->subnodes_.end ();
 
         size_t subnodes = 0;
         for (it = top.node->subnodes_.begin (); it != it_end; ++it)

@@ -1,13 +1,13 @@
 <package>
-  <description brief="tf_tool">
+  <description brief="tf_tunnel">
 
-     tftool
+     tf_tunnel enables compressed transmission of tf messages
 
   </description>
   <author>Julius Kammerl</author>
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
-  <url>http://ros.org/wiki/tftool</url>
+  <url>http://ros.org/wiki/tf_tunnel</url>
   
   <rosdep name="boost" />
   

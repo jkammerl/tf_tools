@@ -75,9 +75,8 @@ protected:
 
     if (wait_time_-call_counter==0)
     {
-      cout<<"0"<<endl<<endl;
-      tf_tree_.showTFTree(root_node_, verbose_);
-      cout<<endl;
+      cout<<"0"<<endl;
+      tf_tree_.showTFRoots();
       ros::shutdown();
     } else
     {
@@ -114,15 +113,8 @@ public:
     boost::thread* dedicated_listener_thread_;
     dedicated_listener_thread_ = new boost::thread(boost::bind(&ShowTFTree::processCallbackQueueThread, this));
 
-    // read verbose parameter
-    verbose_ = false;
-    priv_nh_.param<bool>("verbose", verbose_, false);
-
-    // read root node parameter
-    priv_nh_.param<string>("root", root_node_, "");
-
     // waiting callback
-    cout <<"Collecting TF frames.. " ;
+    cout <<"Collecting tf frames.. " ;
     wait_time_ = 3;
     priv_nh_.getParam("wait", wait_time_);
     sync_timer_ =  timer_nh_.createTimer(ros::Duration(1.0), boost::bind( &ShowTFTree::wait, this ) );
@@ -139,7 +131,7 @@ public:
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "show_tf_tree");
+  ros::init(argc, argv, "show_tf_roots");
   tf_tunnel::ShowTFTree tftree;
   ros::spin();
   return 0;
