@@ -98,7 +98,7 @@ void TFCompression::encodeCompressedTFStream(ostream& compressedDataOut_arg,
     dirty_frameID_table_ = false;
     last_frame_table_transmission_ = ros::Time::now();
 
-    FrameHeader header(FrameHeader::COMPRESSED_FRAME_ID_TABLE);
+    FrameHeader header(FrameHeader::COMPRESSED_FRAME_ID_TABLE, most_recent_tf_time_stamp_);
 
     oa << header;
     {
@@ -163,7 +163,7 @@ void TFCompression::encodeCompressedTFStream(ostream& compressedDataOut_arg,
 
     if (TFContainer_.size() > 0)
     {
-      FrameHeader header(FrameHeader::COMPRESSED_TF_CONTAINER);
+      FrameHeader header(FrameHeader::COMPRESSED_TF_CONTAINER, most_recent_tf_time_stamp_);
       oa << header;
       oa << TFContainer_;
       ROS_DEBUG("Amount of TF messages in TF container: %d", (int)TFContainer_.size());
@@ -196,7 +196,7 @@ void TFCompression::encodeCompressedTFStream(ostream& compressedDataOut_arg,
   }
 }
 
-void TFCompression::decodeCompressedTFStream(istream& compressedDataIn_arg, tf::tfMessage& decoded_msg)
+void TFCompression::decodeCompressedTFStream(istream& compressedDataIn_arg)
 {
   size_t i;
   boost::mutex::scoped_lock lock(mutex_);
@@ -230,15 +230,33 @@ void TFCompression::decodeCompressedTFStream(istream& compressedDataIn_arg, tf::
     while (1)
     {
       ia >> header;
+
+      most_recent_tf_time_stamp_ = header.getMostRecentTimeStamp();
+
+      if (most_recent_tf_time_stamp_<ros::Time(0))
+        most_recent_tf_time_stamp_ = ros::Time(0);
+
       switch (header.type_)
       {
         case FrameHeader::COMPRESSED_FRAME_ID_TABLE:
+          size_t i;
+
           ia >> frameID_to_frameStr_lookup_;
+
+          frameStr_to_frameID_lookup_.clear();
+          for (i=0; i<frameID_to_frameStr_lookup_.size(); ++i)
+            frameStr_to_frameID_lookup_[frameID_to_frameStr_lookup_[i]] = i;
+
+//          frameID_to_nodePtr_lookup_.resize(frameID_to_frameStr_lookup_.size(), 0);
+          frameID_to_nodePtr_lookup_.reserve(frameStr_to_frameID_lookup_.size());
+          for (i=frameID_to_nodePtr_lookup_.size(); i<frameStr_to_frameID_lookup_.size(); ++i)
+            frameID_to_nodePtr_lookup_.push_back(new TFTreeNode());
+
           ROS_DEBUG("FrameVector received (size: %d)", (int)frameID_to_frameStr_lookup_.size());
           break;
         case FrameHeader::COMPRESSED_TF_CONTAINER:
         {
-          geometry_msgs::TransformStamped tf;
+          geometry_msgs::TransformStampedPtr tf;
 
           uint16_t source_frame_id, target_frame_id;
           size_t table_size = frameID_to_frameStr_lookup_.size();
@@ -248,16 +266,24 @@ void TFCompression::decodeCompressedTFStream(istream& compressedDataIn_arg, tf::
 
           for (i = 0; i < TFContainer_.size(); ++i)
           {
-            TFContainer_.decode(i, tf, source_frame_id, target_frame_id);
+            TFContainer_.decode(i, *tf, source_frame_id, target_frame_id);
 
             if ((source_frame_id < table_size) && (target_frame_id < table_size))
             {
-              tf.header.frame_id = frameID_to_frameStr_lookup_[source_frame_id];
-              tf.child_frame_id = frameID_to_frameStr_lookup_[target_frame_id];
+ //
 
-              decoded_msg.transforms.push_back(tf);
+              tf->header.frame_id = frameID_to_frameStr_lookup_[source_frame_id];
+              tf->child_frame_id = frameID_to_frameStr_lookup_[target_frame_id];
 
-              cout << tf.header.frame_id << "--" << tf.child_frame_id << endl;
+
+              TFTreeNode* node = frameID_to_nodePtr_lookup_[target_frame_id];
+              node->tf_msg_ = tf;
+
+              node->last_received_ = ros::Time::now();
+
+//              decoded_msg.transforms.push_back(tf);
+
+              cout << tf->header.frame_id << "--" << tf->child_frame_id << endl;
             }
           }
         }

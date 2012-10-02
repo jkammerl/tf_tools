@@ -84,7 +84,8 @@ public:
       frame_count_(0), dirty_frameID_table_(false) { }
   virtual ~TFTree() { }
 
-  void addTFMessage(const geometry_msgs::TransformStamped& msg);
+  void addTFMessage(const tf::tfMessage& msg);
+  void getTFMessage(tf::tfMessage& msg);
 
   void showTFRoots();
 
@@ -110,6 +111,8 @@ protected:
 
   // dirty flag for frame ID table
   bool dirty_frameID_table_;
+
+  ros::Time most_recent_tf_time_stamp_;
 };
 
 }

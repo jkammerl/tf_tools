@@ -110,8 +110,13 @@ protected:
 
   void callbackTF(const tf::tfMessageConstPtr &msg)
   {
-    for (size_t i = 0; i < msg->transforms.size(); i++)
-      tf_encoding_tree_.addTFMessage(msg->transforms[i]);
+    tf_encoding_tree_.addTFMessage(*msg);
+  }
+
+  // Handles (un)subscribing when clients (un)subscribe
+  void connectCb()
+  {
+    tf_encoding_tree_.triggerIntraUpdate();
   }
 
 public:
@@ -130,9 +135,11 @@ public:
     rootEnc_nh_.setCallbackQueue(&tf_message_encoder_callback_queue_);
 
     // publisher
+    ros::SubscriberStatusCallback connect_cb = boost::bind(&TFEncoder::connectCb, this);
+
     string pub_topic;
     priv_nh_.param<std::string>("publish_topic", pub_topic, "/tf_compressed");
-    pubEnc_ = rootEnc_nh_.advertise<tf_tunnel::CompressedTF>(pub_topic, 1);
+    pubEnc_ = rootEnc_nh_.advertise<tf_tunnel::CompressedTF>(pub_topic, 1, connect_cb);
 
     // create thread for processing callback queue
     encoder_callback_queue_thread_ = new boost::thread(boost::bind(&TFEncoder::processEncoderCallbackQueueThread, this));

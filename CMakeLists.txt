@@ -21,6 +21,7 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #set the default path for built libraries to the "lib" directory
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
+include_directories(/include)
 include_directories(${PROJECT_SOURCE_DIR}/msg_gen/cpp/include/tf_tunnel)
 
 #uncomment if you have defined messages

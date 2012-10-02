@@ -65,11 +65,18 @@ public:
     UNDEFINED_FRAME_TYPE, COMPRESSED_TF_CONTAINER, COMPRESSED_FRAME_ID_TABLE, FRAME_TYPE_COUNT
   };
   FrameHeader() : type_(UNDEFINED_FRAME_TYPE) { }
-  FrameHeader(frame_type_t type) : type_(type) { }
+  FrameHeader(frame_type_t type, ros::Time& recent_stamp) : type_(type), most_recent_time_stamp_(recent_stamp.toNSec()) { }
+
+  ros::Time getMostRecentTimeStamp()
+  {
+    return ros::Time().fromNSec(most_recent_time_stamp_);
+  }
 
   virtual ~FrameHeader(){}
 
   frame_type_t type_;
+  uint64_t most_recent_time_stamp_;
+
 
 private:
 
@@ -80,6 +87,7 @@ private:
     void serialize(Archive &ar, const unsigned int version)
     {
         ar & type_;
+        ar & most_recent_time_stamp_;
     }
 };
 

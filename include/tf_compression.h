@@ -74,8 +74,12 @@ namespace tf_tunnel
       void encodeCompressedTFStream (std::ostream& compressedDataOut_arg,
                                      const std::vector<std::string>& frame_filter_);
 
-      void decodeCompressedTFStream (std::istream& compressedDataIn_arg,
-                                     tf::tfMessage& decoded_msg);
+      void decodeCompressedTFStream (std::istream& compressedDataIn_arg);
+
+      void triggerIntraUpdate()
+      {
+        dirty_frameID_table_ = true;
+      }
 
       void setAngularThreshold(double thres)
       {

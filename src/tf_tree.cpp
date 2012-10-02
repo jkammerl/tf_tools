@@ -37,101 +37,131 @@ using namespace std;
 namespace tf_tunnel
 {
 
-  void TFTree::addTFMessage (const geometry_msgs::TransformStamped& msg)
+
+  void TFTree::addTFMessage (const tf::tfMessage& msg)
   {
+    size_t i;
     boost::mutex::scoped_lock lock (mutex_);
 
-    const string& base_key = msg.header.frame_id;
-    const string& target_key = msg.child_frame_id;
-
-    map<string, unsigned int>::iterator it_id;
-    map<unsigned int, TFTreeNode*>::iterator it_node;
-
-    /// SOURCE FRAME
-
-    TFTreeNode* tf_source_node = 0;
-    unsigned int tf_source_id;
-
-    it_id = frameStr_to_frameID_lookup_.find (base_key);
-    if (it_id != frameStr_to_frameID_lookup_.end ())
+    for (i = 0; i < msg.transforms.size(); i++)
     {
-      // node exists
-      tf_source_id = it_id->second;
+      const geometry_msgs::TransformStamped trans_msg = msg.transforms[i];
 
-      // lookup node pointer
-      assert (tf_source_id<frameID_to_nodePtr_lookup_.size());
-      tf_source_node = frameID_to_nodePtr_lookup_[tf_source_id];
+      const string& base_key = trans_msg.header.frame_id;
+      const string& target_key = trans_msg.child_frame_id;
+
+      map<string, unsigned int>::iterator it_id;
+      map<unsigned int, TFTreeNode*>::iterator it_node;
+
+      /// SOURCE FRAME
+
+      TFTreeNode* tf_source_node = 0;
+      unsigned int tf_source_id;
+
+      it_id = frameStr_to_frameID_lookup_.find (base_key);
+      if (it_id != frameStr_to_frameID_lookup_.end ())
+      {
+        // node exists
+        tf_source_id = it_id->second;
+
+        // lookup node pointer
+        assert (tf_source_id<frameID_to_nodePtr_lookup_.size());
+        tf_source_node = frameID_to_nodePtr_lookup_[tf_source_id];
+      }
+      else
+      {
+        // node does not exist
+
+        // assign frame id
+        tf_source_id = frame_count_++;
+
+        // add entries to lookup maps
+        frameStr_to_frameID_lookup_[base_key] = tf_source_id;
+        frameID_to_frameStr_lookup_.push_back(base_key);
+
+        // create new node and add it to frameID_to_nodePtr_lookup_ map
+        tf_source_node = new TFTreeNode ();
+        tf_source_node->nodeID_ = tf_source_id;
+        frameID_to_nodePtr_lookup_.push_back(tf_source_node);
+
+        dirty_frameID_table_ = true;
+
+      }
+
+      /// TARGET FRAME
+
+      TFTreeNode* tf_target_node = 0;
+      unsigned int tf_target_id;
+
+      it_id = frameStr_to_frameID_lookup_.find (target_key);
+      if (it_id != frameStr_to_frameID_lookup_.end ())
+      {
+        // node exists
+        tf_target_id = it_id->second;
+
+        // lookup node pointer
+        assert (tf_target_id<frameID_to_nodePtr_lookup_.size());
+        tf_target_node = frameID_to_nodePtr_lookup_[tf_target_id];
+      }
+      else
+      {
+        // node does not exist
+
+        // assign frame id
+        tf_target_id = frame_count_++;
+
+        // add entries to lookup maps
+        frameStr_to_frameID_lookup_[target_key] = tf_target_id;
+        frameID_to_frameStr_lookup_.push_back(target_key);
+
+        // create new node and add it to frameID_to_nodePtr_lookup_ map
+        tf_target_node = new TFTreeNode ();
+
+        frameID_to_nodePtr_lookup_.push_back(tf_target_node);
+
+        dirty_frameID_table_ = true;
+      }
+
+      assert (tf_source_node && tf_target_node);
+
+      // updating node
+
+      tf_source_node->subnodes_.insert (tf_target_node);
+
+      tf_target_node->nodeID_ = tf_target_id;
+      tf_target_node->parent_nodeID_ = tf_source_id;
+      tf_target_node->parent_node_ = tf_source_node;
+
+      tf_target_node->tf_msg_ = geometry_msgs::TransformStampedPtr(new geometry_msgs::TransformStamped(trans_msg));
+      tf_target_node->changed_ = true;
+      tf_target_node->last_received_ = ros::Time::now ();
+      tf_target_node->update_counter_++;
+
+      tf_nodes_with_parents_.insert (tf_target_id);
+
     }
-    else
+  }
+
+  void TFTree::getTFMessage(tf::tfMessage& msg)
+  {
+    ros::Time time_latest = ros::Time(0);
+
+    msg.transforms.reserve(frameID_to_nodePtr_lookup_.size());
+
+    if (time_latest<most_recent_tf_time_stamp_)
+      time_latest = most_recent_tf_time_stamp_;
+
+    vector<TFTreeNode*>::iterator it;
+    vector<TFTreeNode*>::const_iterator it_end = frameID_to_nodePtr_lookup_.end();
+    for (it = frameID_to_nodePtr_lookup_.begin(); it != it_end; ++it)
     {
-      // node does not exist
-
-      // assign frame id
-      tf_source_id = frame_count_++;
-
-      // add entries to lookup maps
-      frameStr_to_frameID_lookup_[base_key] = tf_source_id;
-      frameID_to_frameStr_lookup_.push_back(base_key);
-
-      // create new node and add it to frameID_to_nodePtr_lookup_ map
-      tf_source_node = new TFTreeNode ();
-      tf_source_node->nodeID_ = tf_source_id;
-      frameID_to_nodePtr_lookup_.push_back(tf_source_node);
-
-      dirty_frameID_table_ = true;
-
+      const geometry_msgs::TransformStampedConstPtr stamped_msg = (*it)->tf_msg_;
+      if (stamped_msg)
+      {
+        msg.transforms.push_back(*stamped_msg);
+        msg.transforms.back().header.stamp = time_latest;
+      }
     }
-
-    /// TARGET FRAME
-
-    TFTreeNode* tf_target_node = 0;
-    unsigned int tf_target_id;
-
-    it_id = frameStr_to_frameID_lookup_.find (target_key);
-    if (it_id != frameStr_to_frameID_lookup_.end ())
-    {
-      // node exists
-      tf_target_id = it_id->second;
-
-      // lookup node pointer
-      assert (tf_target_id<frameID_to_nodePtr_lookup_.size());
-      tf_target_node = frameID_to_nodePtr_lookup_[tf_target_id];
-    }
-    else
-    {
-      // node does not exist
-
-      // assign frame id
-      tf_target_id = frame_count_++;
-
-      // add entries to lookup maps
-      frameStr_to_frameID_lookup_[target_key] = tf_target_id;
-      frameID_to_frameStr_lookup_.push_back(target_key);
-
-      // create new node and add it to frameID_to_nodePtr_lookup_ map
-      tf_target_node = new TFTreeNode ();
-
-      frameID_to_nodePtr_lookup_.push_back(tf_target_node);
-
-      dirty_frameID_table_ = true;
-    }
-
-    assert (tf_source_node && tf_target_node);
-
-    // updating node
-
-    tf_source_node->subnodes_.insert (tf_target_node);
-
-    tf_target_node->nodeID_ = tf_target_id;
-    tf_target_node->parent_nodeID_ = tf_source_id;
-    tf_target_node->parent_node_ = tf_source_node;
-
-    tf_target_node->tf_msg_ = geometry_msgs::TransformStampedPtr(new geometry_msgs::TransformStamped(msg));
-    tf_target_node->changed_ = true;
-    tf_target_node->last_received_ = ros::Time::now ();
-    tf_target_node->update_counter_++;
-
-    tf_nodes_with_parents_.insert (tf_target_id);
   }
 
   void TFTree::searchForRootNodes (vector<unsigned int>& tf_root_nodes_arg)

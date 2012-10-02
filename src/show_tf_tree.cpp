@@ -91,11 +91,7 @@ protected:
   void callback(const tf::tfMessageConstPtr &msg)
   {
     boost::mutex::scoped_lock lock(mutex_);
-    for (size_t i = 0; i < msg->transforms.size(); i++)
-    {
-      tf_tree_.addTFMessage(msg->transforms[i]);
-      tf_counter_++;
-    }
+    tf_tree_.addTFMessage(*msg);
   }
 
 public:

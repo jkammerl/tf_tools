@@ -91,14 +91,20 @@ protected:
       std::copy(compressed_tf_msg->data.begin(), compressed_tf_msg->data.end(),
                 std::ostream_iterator < uint8_t > (compressedDataStream));
 
-      tf::tfMessage decoded_msg;
+      tf_decoding_tree_.decodeCompressedTFStream(compressedDataStream);
 
-      tf_decoding_tree_.decodeCompressedTFStream(compressedDataStream, decoded_msg);
-
-      if (decoded_msg.transforms.size()>0)
-        pubDec_.publish(decoded_msg);
     }
 
+  }
+
+  void outputTF()
+  {
+    tf::tfMessage decoded_msg;
+
+    tf_decoding_tree_.getTFMessage(decoded_msg);
+
+    if (decoded_msg.transforms.size()>0)
+      pubDec_.publish(decoded_msg);
   }
 
 public:
@@ -123,6 +129,11 @@ public:
     // read verbose parameter
     verbose_ = false;
     priv_nh_.param<bool>("verbose", verbose_, false);
+
+    double rate;
+    priv_nh_.param<double>("rate", rate, 10.0);
+    sync_timer_ = timer_nh_.createTimer(ros::Duration(1.0 / rate), boost::bind(&TFDecoder::outputTF, this));
+
 
   }
 
