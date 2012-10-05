@@ -124,8 +124,6 @@ public:
     rootEnc_nh_(""), priv_nh_("~")
   {
 
-
-
     // ENCODER
 
     // subscribe to /tf
@@ -160,17 +158,30 @@ public:
 protected:
   void initializeFrameFilter(const string& selector_str_arg)
   {
-    boost::split(frame_selector_, selector_str_arg, boost::is_any_of(","));
+    std::vector<std::string> temp_selection_strings;
+    boost::split(temp_selection_strings, selector_str_arg, boost::is_any_of(","));
 
     vector<string>::iterator it;
-    vector<string>::iterator it_end=frame_selector_.end();
+    vector<string>::iterator it_end=temp_selection_strings.end();
 
-    for (it=frame_selector_.begin(); it!=it_end; ++it)
+    frame_selector_.clear();
+    frame_selector_.reserve(temp_selection_strings.size());
+
+    for (it=temp_selection_strings.begin(); it!=it_end; ++it)
     {
       boost::algorithm::trim(*it);
-      if ((*it)[0]!='/')
-        *it="/"+*it;
+
+      if (!(*it).empty())
+      {
+        if ((*it)[0]!='/')
+          *it="/"+*it;
+
+        frame_selector_.push_back(*it);
+
+        ROS_INFO("Selected frame: %s", frame_selector_.back().c_str());
+      }
     }
+
   }
 
   void processEncoderCallbackQueueThread()

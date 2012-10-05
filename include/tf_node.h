@@ -43,8 +43,7 @@ namespace tf_tunnel
   public:
     TFTreeNode() :
       nodeID_(0),
-      parent_nodeID_(0),
-      parent_node_(0),
+      parentPtr_(0),
       changed_(false),
       max_delay_(0.0f),
       update_counter_(0)
@@ -73,13 +72,23 @@ namespace tf_tunnel
       return (float)update_counter_ / (float)ros::Duration(ros::Time::now() - first_received_).toSec();
     }
 
+    bool hasChildren()
+    {
+      return (subnodes_.size()>0);
+    }
+
+    bool hasParent()
+    {
+      return (parentPtr_!=0);
+    }
+
     // node id
     unsigned int nodeID_;
-    unsigned int parent_nodeID_;
 
     // set of child nodes
     std::set<TFTreeNode*> subnodes_;
-    TFTreeNode* parent_node_;
+    // parent node
+    TFTreeNode* parentPtr_;
 
     // most recently received tf message
     geometry_msgs::TransformStampedConstPtr tf_msg_;

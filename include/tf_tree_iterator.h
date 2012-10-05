@@ -74,22 +74,12 @@ namespace tf_tunnel
 
       }
 
-      const TFTreeNode* operator-> () const
+      TFTreeNode* operator-> () const
       {
         return getNode ();
       }
 
-      TFTreeNode* operator-> ()
-      {
-        return getNode ();
-      }
-
-      const TFTreeNode* operator* () const
-      {
-        return getNode ();
-      }
-
-      TFTreeNode* operator* ()
+      TFTreeNode* operator* () const
       {
         return getNode ();
       }
@@ -114,14 +104,14 @@ namespace tf_tunnel
         return *this;
       }
 
-      const unsigned int& getTargetTFFrame ()
+      TFTreeNode* getTargetTFFrame ()
       {
-        return stack.top ().node->nodeID_;
+        return stack.top ().node;
       }
 
-      const unsigned int& getBaseTFFrame ()
+      TFTreeNode* getBaseTFFrame ()
       {
-        return stack.top ().node->parent_nodeID_;
+        return stack.top ().node->parentPtr_;
       }
 
       geometry_msgs::TransformStampedConstPtr getTFMessage()

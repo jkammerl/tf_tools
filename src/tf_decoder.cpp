@@ -99,12 +99,20 @@ protected:
 
   void outputTF()
   {
+
+
+    tf_decoding_tree_.showTFTree();
+
+    tf_decoding_tree_.showTFRoots();
+
+
     tf::tfMessage decoded_msg;
 
     tf_decoding_tree_.getTFMessage(decoded_msg);
 
     if (decoded_msg.transforms.size()>0)
       pubDec_.publish(decoded_msg);
+
   }
 
 public:

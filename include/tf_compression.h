@@ -65,6 +65,7 @@ namespace tf_tunnel
       TFCompression () :
         TFTree(),
         intra_update_rate_(5.0),
+        time_out_interval_(1.0),
         linear_change_threshold_(1.0),
         angular_change_threshold_(0.02)
       { }
@@ -95,8 +96,10 @@ namespace tf_tunnel
 
       bool hasTFNodeChanged(TFTreeNode* node);
       bool intraUpdateRequired(TFTreeNode* node);
+      bool TFTimeOut(TFTreeNode* node);
 
       double intra_update_rate_;
+      double time_out_interval_;
 
       ros::Time last_frame_table_transmission_;
 
@@ -104,6 +107,7 @@ namespace tf_tunnel
       double angular_change_threshold_;
 
       TFMessageContainer TFContainer_;
+      TFTimeOutMessage TFTimeOut_;
 
   };
 

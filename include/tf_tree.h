@@ -85,34 +85,40 @@ public:
   virtual ~TFTree() { }
 
   void addTFMessage(const tf::tfMessage& msg);
+  void addTFMessage(const geometry_msgs::TransformStamped& trans_msg);
   void getTFMessage(tf::tfMessage& msg);
 
   void showTFRoots();
 
-  void showTFTree(unsigned int root, bool verbose = true);
+  void showTFTree(bool verbose = true);
+  void showTFTree(unsigned int rootID, bool verbose = true);
+  void showTFTree(TFTreeNode* root, bool verbose = true);
   void showTFTree(const std::string& root, bool verbose = true);
 
 protected:
-
-  void searchForRootNodes(std::vector<unsigned int>& tf_root_nodes_arg);
+  void removeNode(TFTreeNode* node);
 
   boost::mutex mutex_;
 
   // Lookup tables and maps
   std::map<std::string, unsigned int> frameStr_to_frameID_lookup_;
   FrameVector frameID_to_frameStr_lookup_;
+
   std::vector<TFTreeNode*> frameID_to_nodePtr_lookup_;
+
+  std::set<TFTreeNode*> root_nodes_;
 
   // amount of frames/nodes
   unsigned int frame_count_;
 
-  // set describing nodes that have a parent
-  std::set<unsigned int> tf_nodes_with_parents_;
 
   // dirty flag for frame ID table
   bool dirty_frameID_table_;
 
   ros::Time most_recent_tf_time_stamp_;
+
+  ros::Duration expire_time_;
+
 };
 
 }

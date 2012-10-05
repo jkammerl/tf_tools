@@ -62,20 +62,14 @@ class FrameHeader
 public:
   enum frame_type_t
   {
-    UNDEFINED_FRAME_TYPE, COMPRESSED_TF_CONTAINER, COMPRESSED_FRAME_ID_TABLE, FRAME_TYPE_COUNT
+    UNDEFINED_FRAME_TYPE, COMPRESSED_TF_CONTAINER, TF_TIMEOUT_CONTAINER, COMPRESSED_FRAME_ID_TABLE, FRAME_TYPE_COUNT
   };
   FrameHeader() : type_(UNDEFINED_FRAME_TYPE) { }
-  FrameHeader(frame_type_t type, ros::Time& recent_stamp) : type_(type), most_recent_time_stamp_(recent_stamp.toNSec()) { }
-
-  ros::Time getMostRecentTimeStamp()
-  {
-    return ros::Time().fromNSec(most_recent_time_stamp_);
-  }
+  FrameHeader(frame_type_t type) : type_(type) { }
 
   virtual ~FrameHeader(){}
 
   frame_type_t type_;
-  uint64_t most_recent_time_stamp_;
 
 
 private:
@@ -87,7 +81,25 @@ private:
     void serialize(Archive &ar, const unsigned int version)
     {
         ar & type_;
-        ar & most_recent_time_stamp_;
+    }
+};
+
+
+class TFTimeOutMessage : public std::vector<uint32_t>
+{
+  friend class boost::serialization::access;
+  friend std::ostream & operator<<(std::ostream &os, const TFTimeOutMessage &gp);
+
+public:
+  TFTimeOutMessage() { }
+  virtual ~TFTimeOutMessage() { }
+
+private:
+  template<class Archive>
+    void serialize(Archive &ar, const unsigned int version)
+    {
+      std::vector < uint32_t > &vec = *this;
+      ar & vec;
     }
 };
 
@@ -141,25 +153,25 @@ public:
 
   void add(TFTreeNode* node)
   {
-    uint16_t source_frame_id, target_frame_id;
 
-    geometry_msgs::TransformStampedConstPtr tf_msg = node->tf_msg_;
-    if (tf_msg)
+    if (node->hasParent())
     {
-      source_frame_id = node->parent_nodeID_;
+      uint16_t source_frame_id, target_frame_id;
+
+      source_frame_id = node->parentPtr_->nodeID_;
       target_frame_id = node->nodeID_;
 
-      if (source_frame_id!=target_frame_id)
-      {
-        node->tf_msg_sent_ = tf_msg;
+      geometry_msgs::TransformStampedConstPtr tf_msg = node->tf_msg_;
 
-        add(tf_msg, source_frame_id, target_frame_id);
+      add(tf_msg, source_frame_id, target_frame_id);
 
-        node->transmission_stamp_ = ros::Time::now();
-        node->changed_ = false;
+      node->tf_msg_sent_ = tf_msg;
 
-        ROS_DEBUG("Adding TF frame (%d->%d) to compression container", source_frame_id, target_frame_id);
-      }
+      node->transmission_stamp_ = ros::Time::now();
+      node->changed_ = false;
+
+      ROS_DEBUG("Adding TF frame (%d->%d) to compression container", source_frame_id, target_frame_id);
+
     }
   }
 
