@@ -334,6 +334,7 @@ void TFCompression::decodeCompressedTFStream(istream& compressedDataIn_arg)
         }
 
         default:
+          ROS_DEBUG("Received unknown container");
           break;
       }
     }
