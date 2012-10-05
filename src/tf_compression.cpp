@@ -295,6 +295,7 @@ void TFCompression::decodeCompressedTFStream(istream& compressedDataIn_arg)
 
           TFContainer_.clear();
           ia >> TFContainer_;
+          ROS_DEBUG("Compressed TF container received (size: %d)", (int)TFContainer_.size());
 
           for (i = 0; i < TFContainer_.size(); ++i)
           {
@@ -310,6 +311,7 @@ void TFCompression::decodeCompressedTFStream(istream& compressedDataIn_arg)
               cout << tf.header.frame_id << "--" << tf.child_frame_id << endl;
             }
           }
+          break;
         }
         case FrameHeader::TF_TIMEOUT_CONTAINER:
         {
@@ -319,6 +321,7 @@ void TFCompression::decodeCompressedTFStream(istream& compressedDataIn_arg)
 
           TFTimeOut_.clear();
           ia >> TFTimeOut_;
+          ROS_DEBUG("Compressed TF container received (size: %d)", (int)TFContainer_.size());
 
           for (i = 0; i < TFTimeOut_.size(); ++i)
           {
@@ -327,9 +330,9 @@ void TFCompression::decodeCompressedTFStream(istream& compressedDataIn_arg)
               removeNode(frameID_to_nodePtr_lookup_[TFTimeOut_[i]]);
             }
           }
+          break;
         }
 
-          break;
         default:
           break;
       }

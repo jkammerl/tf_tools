@@ -107,6 +107,8 @@ protected:
     if (decoded_msg.transforms.size()>0)
       pubDec_.publish(decoded_msg);
 
+
+    tf_decoding_tree_.showTFTree();
   }
 
 public:
