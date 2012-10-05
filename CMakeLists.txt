@@ -47,10 +47,12 @@ target_link_libraries( show_tf_tree ${Boost_LIBRARIES} )
 rosbuild_add_executable(show_tf_roots src/show_tf_roots.cpp src/tf_tree.cpp)
 target_link_libraries( show_tf_roots ${Boost_LIBRARIES} )
 
+rosbuild_add_executable(tf_relay src/tf_relay.cpp src/tf_tree.cpp)
+target_link_libraries( tf_relay ${Boost_LIBRARIES} )
+
 rosbuild_add_executable(tf_encoder src/tf_encoder.cpp src/tf_tree.cpp src/tf_compression.cpp)
 target_link_libraries( tf_encoder ${Boost_LIBRARIES} )
 
 rosbuild_add_executable(tf_decoder src/tf_decoder.cpp src/tf_tree.cpp src/tf_compression.cpp)
 target_link_libraries( tf_decoder ${Boost_LIBRARIES} )
-
 

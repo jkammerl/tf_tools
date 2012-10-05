@@ -100,12 +100,6 @@ protected:
   void outputTF()
   {
 
-
-    tf_decoding_tree_.showTFTree();
-
-    tf_decoding_tree_.showTFRoots();
-
-
     tf::tfMessage decoded_msg;
 
     tf_decoding_tree_.getTFMessage(decoded_msg);
@@ -137,6 +131,10 @@ public:
     // read verbose parameter
     verbose_ = false;
     priv_nh_.param<bool>("verbose", verbose_, false);
+
+    string prefix;
+    priv_nh_.param<std::string>("frame_selector", prefix, "");
+    tf_decoding_tree_.setDecodingPrefix(prefix);
 
     double rate;
     priv_nh_.param<double>("rate", rate, 10.0);

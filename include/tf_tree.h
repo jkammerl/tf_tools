@@ -95,6 +95,11 @@ public:
   void showTFTree(TFTreeNode* root, bool verbose = true);
   void showTFTree(const std::string& root, bool verbose = true);
 
+  void setDecodingPrefix(std::string& prefix)
+  {
+    prefix_ = prefix;
+  }
+
 protected:
   void removeNode(TFTreeNode* node);
 
@@ -118,6 +123,8 @@ protected:
   ros::Time most_recent_tf_time_stamp_;
 
   ros::Duration expire_time_;
+
+  std::string prefix_;
 
 };
 

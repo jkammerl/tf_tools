@@ -63,8 +63,8 @@ namespace tf_tunnel
     }
 
 
-    const string& base_key = trans_msg.header.frame_id;
-    const string& target_key = trans_msg.child_frame_id;
+    const string base_key = trans_msg.header.frame_id;
+    const string target_key = trans_msg.child_frame_id;
 
     map<string, unsigned int>::iterator it_id;
     map<unsigned int, TFTreeNode*>::iterator it_node;
@@ -183,11 +183,22 @@ namespace tf_tunnel
     vector<TFTreeNode*>::const_iterator it_end = frameID_to_nodePtr_lookup_.end();
     for (it = frameID_to_nodePtr_lookup_.begin(); it != it_end; ++it)
     {
-      const geometry_msgs::TransformStampedConstPtr stamped_msg = (*it)->tf_msg_;
+      geometry_msgs::TransformStampedConstPtr stamped_msg = (*it)->tf_msg_;
       if (stamped_msg)
       {
         msg.transforms.push_back(*stamped_msg);
-        msg.transforms.back().header.stamp = time_latest;
+
+        geometry_msgs::TransformStamped& back = msg.transforms.back();
+
+        back.header.stamp = time_latest;
+
+        string& source_frame = back.header.frame_id;
+        string& target_frame = back.child_frame_id;
+
+        if (!source_frame.empty())
+          source_frame = "/"+prefix_+source_frame.substr(1);
+        if (!target_frame.empty())
+          target_frame = "/"+prefix_+target_frame.substr(1);
       }
     }
   }
